@@ -15,5 +15,6 @@ class Product(Base):
     image: Mapped[str] = mapped_column(Text, nullable=False, default="")  # URL or data: URI
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     features: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    images: Mapped[list | None] = mapped_column(JSON, nullable=True)  # gallery: ordered list of URLs / data: URIs (first = cover)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

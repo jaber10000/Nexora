@@ -20,7 +20,7 @@ DARK = colors.HexColor("#161a1d")
 MUTED = colors.HexColor("#6b6f68")
 LINE = colors.HexColor("#ddd8cc")
 SHIPPING_LABEL = {"standard": "Standard delivery", "express": "Express delivery"}
-PAYMENT_LABEL = {"cod": "Cash on Delivery", "bkash": "bKash", "nagad": "Nagad", "sslcommerz": "SSLCommerz"}
+PAYMENT_LABEL = {"cod": "Cash on Delivery", "bkash": "bKash", "nagad": "Nagad", "sslcommerz": "SSLCommerz", "bkash_p2p": "bKash (Dummy P2P)", "nagad_p2p": "Nagad (Dummy P2P)", "sslcommerz_demo": "SSLCommerz Demo"}
 
 
 def _w(*mms: float) -> list[float]:

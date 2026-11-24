@@ -1,0 +1,5 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+type Row={productId:number;name:string;category:string;image:string;views:number};
+export function MostViewedProducts(){const [rows,setRows]=useState<Row[]>([]);const [error,setError]=useState('');useEffect(()=>{api<{items:Row[]}>('/api/recently-viewed/admin/most-viewed').then(r=>setRows(r.items||[])).catch(e=>setError(e.message||'Unable to load view analytics.'));},[]);return <section className="admin-preview" style={{marginTop:20}}><h2>Most viewed products</h2><p className="muted-note">Lifetime product view events. Customer history remains limited to their latest five products.</p>{error&&<p className="err">{error}</p>}{rows.length===0&&!error&&<p className="muted-note">No product views recorded yet.</p>}{rows.map((r,i)=><div className="rank-row" key={r.productId}><span className="rank">{i+1}</span><div className="inv-thumb" style={{backgroundImage:`url('${r.image}')`}}/><div className="rank-info"><b>{r.name}</b><small>{r.category}</small></div><div className="rank-num"><b>{r.views.toLocaleString()}</b><small>views</small></div></div>)}</section>}

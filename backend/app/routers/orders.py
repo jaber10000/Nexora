@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.services.loyalty import award_order_points
 from app.core.security import admin_user, current_user
 from app.database.session import get_db
-from app.models import EmailLog, Order, OrderItem, Product, StoreSetting, User
+from app.models import EmailLog, Order, OrderItem, Product, StoreSetting, User, LoyaltyRewardCoupon, LoyaltyAccount
 from app.schemas import CancelIn, OrderIn, PaymentIn, RefundIn, RefundRejectIn, RefundRequestIn, StatusIn
 from app.services import orders as svc
 from app.services.email import send_order_email, store_info
@@ -39,31 +39,53 @@ def place_order(body: OrderIn, background: BackgroundTasks, user: User = Depends
         items.append(OrderItem(product_id=p.id, name=p.name, image=p.image, price=p.price, quantity=q))
         subtotal += p.price * q
 
+    # Demo payment channels: no real gateway/merchant is connected. Mobile-wallet
+    # submissions are stored for manual verification; SSLCommerz is simulated.
+    payment_info = dict(body.payment_info or {})
+    if body.payment in {"bkash_p2p", "nagad_p2p", "bkash", "nagad"}:
+        payment_method = "bkash_p2p" if body.payment in {"bkash_p2p", "bkash"} else "nagad_p2p"
+        trx = str(payment_info.get("trx_id") or payment_info.get("transaction_id") or "").strip()
+        sender = str(payment_info.get("sender_number") or payment_info.get("number") or "").strip()
+        if not trx or not sender:
+            raise HTTPException(400, "Mobile-wallet sender number and transaction ID are required.")
+        payment_info.update({"payment_method": payment_method, "trx_id": trx, "sender_number": sender, "payment_status": "pending_verification", "demo": True})
+    elif body.payment in {"sslcommerz_demo", "sslcommerz"}:
+        payment_method = "sslcommerz_demo"
+        payment_info.update({"payment_method": payment_method, "trx_id": str(payment_info.get("trx_id") or "DEMO-SSL-" + secrets.token_hex(4).upper()), "payment_status": "pending_verification", "demo": True})
+    reward_coupon = None
     discount, code = 0, None
     if body.coupon:
         c, discount, err = evaluate_coupon(find_coupon(db, body.coupon, lock=True), subtotal)
         if err:
             raise HTTPException(400, err)
+        reward_coupon = db.scalar(select(LoyaltyRewardCoupon).where(LoyaltyRewardCoupon.code == c.code))
+        if reward_coupon and (reward_coupon.user_id != user.id or reward_coupon.redeemed_order_id):
+            raise HTTPException(400, "This loyalty coupon is already used or belongs to another account.")
         c.used += 1
         code = c.code
 
     fee, free_over = SHIPPING[body.shipping]
     delivery = 0 if (free_over and subtotal >= FREE_DELIVERY_OVER) else fee
+    loyalty = db.scalar(select(LoyaltyAccount).where(LoyaltyAccount.user_id == user.id))
+    if loyalty and (loyalty.lifetime_points >= 2500 or (loyalty.platinum_free_delivery_until and loyalty.platinum_free_delivery_until > datetime.utcnow())):
+        delivery = 0
 
     for it in items:
         products[it.product_id].stock -= it.quantity
 
     order = Order(
         id="NX" + "".join(secrets.choice("0123456789") for _ in range(8)), user_id=user.id, email=user.email,
-        shipping=body.shipping, payment=body.payment, payment_info=body.payment_info, subtotal=subtotal,
+        shipping=body.shipping, payment=body.payment, payment_info=payment_info or None, subtotal=subtotal,
         delivery=delivery, discount=discount, coupon=code, total=subtotal - discount + delivery,
         name=body.address.name, phone=body.address.phone, address=body.address.address,
         area=body.address.area, district=body.address.district, items=items,
     )
     order.created_at = datetime.utcnow()
-    order.payment_status = "Unpaid"
+    order.payment_status = "pending_verification" if body.payment in {"bkash", "nagad", "bkash_p2p", "nagad_p2p", "sslcommerz", "sslcommerz_demo"} else "Unpaid"
     svc.mark_placed(order)
     db.add(order)
+    if reward_coupon:
+        reward_coupon.redeemed_order_id = order.id
     db.commit()
     db.refresh(order)
     background.add_task(send_order_email, order.id, "placed")
@@ -156,8 +178,19 @@ def set_status(
         tracking=body.tracking_number,
     )
 
-    # Award loyalty points when order is completed
-    if body.status.lower() == "completed":
+    # Release an account-bound loyalty coupon if an order is cancelled; retain its
+    # association when the order is reopened or otherwise active.
+    if o.coupon:
+        reward = db.scalar(select(LoyaltyRewardCoupon).where(LoyaltyRewardCoupon.code == o.coupon))
+        if reward:
+            reward.redeemed_order_id = None if body.status.lower() == "cancelled" else o.id
+
+    # Award loyalty points on the actual store status "Delivered".
+    # The service checks for an existing earned transaction by order ID, so
+    # retrying this status update cannot double-credit the customer. Also run
+    # when an already-delivered order is re-saved, allowing recovery of orders
+    # that were delivered before this reward hook was fixed.
+    if o.status == "Delivered" and o.user_id is not None:
         award_order_points(
             db=db,
             user_id=o.user_id,

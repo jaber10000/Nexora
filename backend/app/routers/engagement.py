@@ -86,7 +86,7 @@ def list_reviews(pid: int, limit: int = Query(10, ge=1, le=50), offset: int = Qu
         raise HTTPException(404, "Product not found.")
     rows = db.execute(
         select(Review, User).join(User, User.id == Review.user_id, isouter=True)
-        .where(Review.product_id == pid).order_by(Review.created_at.desc(), Review.id.desc()).limit(limit).offset(offset)
+        .where(Review.product_id == pid, Review.approved.is_(True)).order_by(Review.created_at.desc(), Review.id.desc()).limit(limit).offset(offset)
     ).all()
     mine = db.scalar(select(Review).where(Review.product_id == pid, Review.user_id == user.id)) if user else None
     return {
@@ -117,6 +117,18 @@ def create_review(pid: int, b: ReviewIn, user: User = Depends(current_user), db:
     db.refresh(r)
     return rv.review_out(r, user)
 
+
+
+@reviews.get("/recent")
+def recent_reviews(limit: int = Query(12, ge=1, le=30), db: Session = Depends(get_db)):
+    """Homepage feed of approved customer reviews with product names."""
+    rows = db.execute(
+        select(Review, User, Product.name).join(User, User.id == Review.user_id, isouter=True)
+        .join(Product, Product.id == Review.product_id)
+        .where(Review.approved.is_(True), Product.is_active.is_(True))
+        .order_by(Review.created_at.desc(), Review.id.desc()).limit(limit)
+    ).all()
+    return {"items": [rv.review_out(r, u, product_name=n) for r, u, n in rows]}
 
 @reviews.put("/{rid}")
 def update_review(rid: int, b: ReviewIn, user: User = Depends(current_user), db: Session = Depends(get_db)):

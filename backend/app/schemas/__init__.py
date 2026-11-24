@@ -56,6 +56,7 @@ class ProductIn(Camel):
     image: str = Field(min_length=1, max_length=2_000_000)
     description: str | None = None
     features: list[str] | None = None
+    images: list[str] | None = Field(default=None, max_length=10)  # gallery, first one is the cover
     stock: int = Field(default=0, ge=0, le=9999)
 
 
@@ -114,7 +115,7 @@ class LineIn(BaseModel):
 class OrderIn(BaseModel):
     lines: list[LineIn] = Field(min_length=1)
     shipping: Literal["standard", "express"]
-    payment: Literal["cod", "bkash", "nagad", "sslcommerz"]
+    payment: Literal["cod", "bkash", "nagad", "sslcommerz", "bkash_p2p", "nagad_p2p", "sslcommerz_demo"]
     coupon: str | None = None
     address: AddressIn
     payment_info: dict | None = None

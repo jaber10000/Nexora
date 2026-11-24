@@ -14,8 +14,10 @@ from app.routers import (
     dashboard,
     engagement,
     loyalty,
+    notifications,
     orders,
     recently_viewed,
+    theme,
 )
 
 from app.seed import run as init_db
@@ -34,24 +36,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-origins = [
+# Allow configured frontend origins plus common local development origins.
+# Localhost regex is intentionally limited to loopback hosts, never public domains.
+origins = {
     o.strip().rstrip("/")
     for o in settings.frontend_origin.split(",")
     if o.strip()
-]
+}
+origins.update({
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+})
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=(
-        r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
-        if settings.environment == "development"
-        else None
-    ),
+cors_options = dict(
+    allow_origins=sorted(origins),
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
+app.add_middleware(CORSMiddleware, **cors_options)
 
 
 # Core Routers
@@ -76,6 +82,8 @@ for router in (
 # Extra Features
 app.include_router(recently_viewed.router)
 app.include_router(loyalty.router)
+app.include_router(theme.router)
+app.include_router(notifications.router)
 
 
 @app.get("/", tags=["General"])
@@ -98,3 +106,6 @@ def health():
         "version": "2.0.0",
         "database": "connected",
     }
+# Outermost CORS wrapper ensures browser receives CORS headers even for unhandled
+# backend exceptions (which otherwise can look like a CORS failure in DevTools).
+app = CORSMiddleware(app, **cors_options)

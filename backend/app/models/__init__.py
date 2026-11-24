@@ -17,4 +17,7 @@ from app.models.engagement import (
     RecentlyViewed,
     LoyaltyAccount,
     LoyaltyTransaction,
+    LoyaltyRewardCoupon,
+    ProductViewEvent,
 )
+from app.models.notification import Notification

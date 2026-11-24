@@ -48,6 +48,14 @@ class RecentlyViewed(Base):
     )
 
 
+class ProductViewEvent(Base):
+    __tablename__ = "product_view_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
 class LoyaltyAccount(Base):
     __tablename__ = "loyalty_accounts"
 
@@ -72,6 +80,8 @@ class LoyaltyAccount(Base):
         nullable=False
     )
 
+    platinum_free_delivery_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class LoyaltyTransaction(Base):
     __tablename__ = "loyalty_transactions"
@@ -91,10 +101,8 @@ class LoyaltyTransaction(Base):
         nullable=False
     )
 
-    order_id: Mapped[int | None] = mapped_column(
-        ForeignKey("orders.id", ondelete="SET NULL"),
-        nullable=True
-    )
+    # Order IDs are string identifiers (e.g. NX12345678), so do not use an integer FK.
+    order_id: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
 
     points: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -182,10 +190,14 @@ class Review(Base):
         nullable=False,
     )
 
+    title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     comment: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
+
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     approved: Mapped[bool] = mapped_column(
         Boolean,
@@ -197,3 +209,13 @@ class Review(Base):
         DateTime,
         server_default=func.now(),
     )
+
+class LoyaltyRewardCoupon(Base):
+    __tablename__ = "loyalty_reward_coupons"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    tier: Mapped[str] = mapped_column(String(40), nullable=False)
+    coupon_id: Mapped[int] = mapped_column(ForeignKey("coupons.id", ondelete="CASCADE"), nullable=False)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    redeemed_order_id: Mapped[str | None] = mapped_column(String(20), nullable=True)

@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.core.security import current_user, admin_user
+from app.core.security import current_user, admin_user, optional_user
 from app.database.session import get_db
-from app.models import User, Product, RecentlyViewed
+from app.models import User, Product, RecentlyViewed, ProductViewEvent
 from app.services.recently_viewed import (
     track_product_view,
     get_recently_viewed,
@@ -20,7 +20,7 @@ router = APIRouter(
 @router.post("/{product_id}")
 def track_view(
     product_id: int,
-    user: User = Depends(current_user),
+    user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
 ):
     product = db.get(Product, product_id)
@@ -28,7 +28,7 @@ def track_view(
     if not product or not product.is_active:
         raise HTTPException(404, "Product not found")
 
-    track_product_view(db, user.id, product_id)
+    track_product_view(db, user.id if user else None, product_id)
 
     return {
         "success": True,
@@ -121,11 +121,11 @@ def most_viewed_products(
             Product.name,
             Product.category,
             Product.image,
-            func.count(RecentlyViewed.id).label("view_count")
+            func.count(ProductViewEvent.id).label("view_count")
         )
         .join(
-            RecentlyViewed,
-            RecentlyViewed.product_id == Product.id
+            ProductViewEvent,
+            ProductViewEvent.product_id == Product.id
         )
         .where(Product.is_active.is_(True))
         .group_by(
@@ -134,7 +134,7 @@ def most_viewed_products(
             Product.category,
             Product.image
         )
-        .order_by(func.count(RecentlyViewed.id).desc())
+        .order_by(func.count(ProductViewEvent.id).desc())
         .limit(20)
     ).all()
 

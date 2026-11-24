@@ -1,0 +1,22 @@
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+dist/
+
+# Build and cache
+*.log
+.DS_Store
+*.tsbuildinfo

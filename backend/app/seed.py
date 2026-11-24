@@ -1,10 +1,11 @@
 """Creates tables and inserts starter data. Safe to run repeatedly: `python -m app.seed`."""
+from datetime import datetime, timedelta
 from sqlalchemy import inspect, select, text
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.database.session import Base, SessionLocal, engine
-from app.models import Category, Coupon, Order, OrderEvent, Product, User
+from app.models import Category, Coupon, Order, OrderEvent, Product, User, LoyaltyAccount
 
 IMG = lambda i: f"https://images.unsplash.com/{i}?auto=format&fit=crop&w=900&q=85"
 
@@ -79,7 +80,45 @@ def run() -> None:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(20)"))
     migrate_orders()
+    # Add fields introduced by engagement/loyalty updates to existing installations.
+    loyalty_columns = {c["name"] for c in inspect(engine).get_columns("loyalty_accounts")} if inspect(engine).has_table("loyalty_accounts") else set()
+    with engine.begin() as conn:
+        if "platinum_free_delivery_until" not in loyalty_columns:
+            conn.execute(text("ALTER TABLE loyalty_accounts ADD COLUMN platinum_free_delivery_until TIMESTAMP"))
+    # Backfill columns introduced by newer product/review features. create_all()
+    # does not modify tables that already exist, so old local databases need migrations.
+    product_columns = {c["name"] for c in inspect(engine).get_columns("products")}
+    product_migrations = {
+        "category": "VARCHAR(80) NOT NULL DEFAULT ''",
+        "old_price": "INTEGER",
+        "tag": "VARCHAR(40)",
+        "image": "TEXT NOT NULL DEFAULT ''",
+        "description": "TEXT",
+        "features": "JSON",
+        "images": "JSON",
+        "stock": "INTEGER NOT NULL DEFAULT 0",
+        "is_active": "BOOLEAN NOT NULL DEFAULT 1",
+    }
+    with engine.begin() as conn:
+        for col, ddl in product_migrations.items():
+            if col not in product_columns:
+                conn.execute(text(f"ALTER TABLE products ADD COLUMN {col} {ddl}"))
+
+    # Reviews need approval status for public-rating aggregates. Older DBs may
+    # have the review table but not this field, which made /api/products 500.
+    review_columns = {c["name"] for c in inspect(engine).get_columns("reviews")} if inspect(engine).has_table("reviews") else set()
+    with engine.begin() as conn:
+        if "title" not in review_columns:
+            conn.execute(text("ALTER TABLE reviews ADD COLUMN title VARCHAR(120)"))
+        if "updated_at" not in review_columns:
+            conn.execute(text("ALTER TABLE reviews ADD COLUMN updated_at TIMESTAMP"))
+        if "approved" not in review_columns:
+            conn.execute(text("ALTER TABLE reviews ADD COLUMN approved BOOLEAN NOT NULL DEFAULT 1"))
     with SessionLocal() as db:
+        # Existing members who had already crossed Platinum receive the migrated
+        # 30-day free-delivery window from the upgrade date.
+        for account in db.scalars(select(LoyaltyAccount).where(LoyaltyAccount.lifetime_points >= 1500, LoyaltyAccount.platinum_free_delivery_until.is_(None))):
+            account.platinum_free_delivery_until = datetime.utcnow() + timedelta(days=30)
         for email, name, pw, admin in [(settings.admin_email, "Admin", settings.admin_password, True),
                                        (settings.demo_email, "Demo", settings.demo_password, False)]:
             existing = db.scalar(select(User).where(User.email == email.lower()))

@@ -131,7 +131,7 @@ def order_to_out(o: Order, admin: bool = False) -> dict:
         "status": o.status,
         "lines": [{"id": i.product_id, "name": i.name, "image": i.image, "price": i.price, "quantity": i.quantity} for i in o.items],
         "subtotal": o.subtotal, "delivery": o.delivery, "discount": o.discount, "coupon": o.coupon, "total": o.total,
-        "shipping": o.shipping, "payment": o.payment, "email": o.email,
+        "shipping": o.shipping, "payment": o.payment, "paymentInfo": o.payment_info, "email": o.email,
         "address": {"name": o.name, "phone": o.phone, "address": o.address, "area": o.area, "district": o.district},
         "paymentStatus": o.payment_status or "Unpaid",
         "courier": o.courier, "trackingNumber": o.tracking_number,
@@ -202,9 +202,11 @@ def change_status(db: Session, o: Order, new: str, actor: str, note: str | None 
         add_event(o, "status", "Order reopened", note, actor=actor)
 
     o.status = new
-    if new == "Delivered" and o.payment_status != "Paid":
+    if new == "Delivered" and o.payment_status != "Paid" and o.payment == "cod":
+        # COD is considered collected when delivery is confirmed. Demo wallet/gateway
+        # submissions remain pending verification until an admin manually verifies.
         o.payment_status = "Paid"
-        add_event(o, "payment", "Payment received", "Cash collected on delivery." if o.payment == "cod" else None, actor=actor)
+        add_event(o, "payment", "Payment received", "Cash collected on delivery.", actor=actor)
     title = STATUS_TITLES[new]
     detail = note
     if new == "Shipped":

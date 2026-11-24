@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -67,7 +68,7 @@ def get_or_create_account(db: Session, user_id: int):
 def award_order_points(
     db: Session,
     user_id: int,
-    order_id: int,
+    order_id: str,
     order_total: float,
 ):
     # Prevent duplicate rewards
@@ -91,7 +92,10 @@ def award_order_points(
     account = get_or_create_account(db, user_id)
 
     account.points_balance += points
+    previous_lifetime = account.lifetime_points
     account.lifetime_points += points
+    if previous_lifetime < 1500 <= account.lifetime_points and not account.platinum_free_delivery_until:
+        account.platinum_free_delivery_until = datetime.utcnow() + timedelta(days=30)
 
     transaction = LoyaltyTransaction(
         user_id=user_id,

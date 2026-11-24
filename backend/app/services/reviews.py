@@ -20,14 +20,14 @@ def has_purchased(db: Session, user_id: int, product_id: int) -> bool:
 
 def summaries(db: Session, product_ids: list[int] | None = None) -> dict[int, tuple[float, int]]:
     """{product_id: (average, count)} computed in ONE grouped query (no N+1 on the product list)."""
-    q = select(Review.product_id, func.avg(Review.rating), func.count(Review.id)).group_by(Review.product_id)
+    q = select(Review.product_id, func.avg(Review.rating), func.count(Review.id)).where(Review.approved.is_(True)).group_by(Review.product_id)
     if product_ids is not None:
         q = q.where(Review.product_id.in_(product_ids))
     return {pid: (round(float(avg), 1), int(n)) for pid, avg, n in db.execute(q)}
 
 
 def distribution(db: Session, product_id: int) -> dict[str, int]:
-    rows = dict(db.execute(select(Review.rating, func.count(Review.id)).where(Review.product_id == product_id).group_by(Review.rating)).all())
+    rows = dict(db.execute(select(Review.rating, func.count(Review.id)).where(Review.product_id == product_id, Review.approved.is_(True)).group_by(Review.rating)).all())
     return {str(s): int(rows.get(s, 0)) for s in (5, 4, 3, 2, 1)}
 
 
