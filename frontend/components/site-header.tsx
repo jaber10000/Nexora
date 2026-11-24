@@ -43,8 +43,8 @@ export function SiteHeader() {
         <nav className={open ? 'nav-links show' : 'nav-links'} aria-label="Main navigation">
           <Link href="/" onClick={close}>Home</Link>
           <Link href="/products" onClick={close}>Shop</Link>
-          <a href="/#categories" onClick={close}>Categories</a>
-          <a href="/#story" onClick={close}>About</a>
+          <Link href="/#categories" onClick={close}>Categories</Link>
+          <Link href="/#story" onClick={close}>About</Link>
           <Link href="/portfolio" onClick={close}>Portfolio</Link>
           {user && <Link href="/orders" onClick={close}>My orders</Link>}
         </nav>

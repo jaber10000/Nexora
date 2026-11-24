@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { nextPath } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { PasswordField } from '@/components/password-field';
